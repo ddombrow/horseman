@@ -1,36 +1,34 @@
-const {ChromeLauncher} = require('lighthouse/lighthouse-cli/chrome-launcher');
-const chrome = require('chrome-remote-interface');
+const puppeteer = require('puppeteer');
 
-/**
- * Launches a debugging instance of Chrome on port 9222.
- * @param {boolean=} headless True (default) to launch Chrome in headless mode.
- *     Set to false to launch Chrome normally.
- * @return {Promise<ChromeLauncher>}
- */
-function launchChrome(headless = true) {
-  const launcher = new ChromeLauncher({
-    port: 9222,
-    autoSelectChrome: true, // False to manually select which Chrome install.
-    additionalFlags: [
-      '--window-size=412,732',
-      '--disable-gpu',
-      headless ? '--headless' : ''
-    ]
-  });
+puppeteer.launch({headless: false}).then(async browser => {
+  let page = await browser.newPage();
+  const reportPath = "http://localhost:3000/test";
+  const reportDataKey = "report_data";
+  const reportData = {
+      test: 123,
+      by: "Dan D."
+  };
+  const loadScript = `
+    const path = "${reportPath}";
+    const method = "post";
 
-  return launcher.run().then(() => launcher)
-    .catch(err => {
-      return launcher.kill().then(() => { // Kill Chrome if there's an error.
-        throw err;
-      }, console.error);
-    });
-}
+    // The rest of this code assumes you are not using a library.
+    // It can be made less wordy if you use one.
+    const form = document.createElement("form");
+    form.setAttribute("method", method);
+    form.setAttribute("action", path);
 
-launchChrome(true).then(launcher => {
-    console.log("launched it!");
-    chrome.Version().then(version => console.log(version['User-Agent']));
-})
-.catch(err => {
-    console.error(err);
-    process.exit(1);
-})
+    var hiddenField = document.createElement("input");
+    hiddenField.setAttribute("type", "hidden");
+    hiddenField.setAttribute("name", "${reportDataKey}");
+    hiddenField.setAttribute("value", '${JSON.stringify(reportData)}');
+    form.appendChild(hiddenField);
+
+    document.body.appendChild(form);
+    form.submit();
+  `;
+  await page.evaluate(loadScript);
+  await page.waitForNavigation({ waitUntil: "networkidle"});
+  await page.screenshot({path: 'screenshot.png'});
+  browser.close();
+});
